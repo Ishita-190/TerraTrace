@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { NextResponse } from 'next/server';
 
+// Use the connection string directly from environment
 const sql = neon(process.env.DATABASE_URL);
 
 export async function POST() {
