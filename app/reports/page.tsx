@@ -36,7 +36,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
     setLoading(true);
     (async () => {
       try {
@@ -82,14 +82,14 @@ export default function ReportsPage() {
       const key = metric as "displacement" | "affected";
       return rows
         .sort((a, b) => {
-          const aValue = key === "displacement" ? a.displacement : a.affected;
-          const bValue = key === "displacement" ? b.displacement : b.affected;
+          const aValue = key === "displacement" ? (a as any).displacement : (a as any).affected;
+          const bValue = key === "displacement" ? (b as any).displacement : (b as any).affected;
           return (bValue || 0) - (aValue || 0);
         })
         .slice(0, 15);
     }
     return rows
-      .sort((a, b) => (b.coverage || 0) - (a.coverage || 0))
+      .sort((a, b) => ((b as any).coverage || 0) - ((a as any).coverage || 0))
       .slice(0, 15);
   }, [source, metric, cleanedData]);
 
@@ -159,7 +159,7 @@ export default function ReportsPage() {
               {source === "dam" ? "Total Affected (K)" : "Top Coverage"}
             </p>
             <p className="text-2xl font-semibold">
-              {source === "dam" ? `${summary.totalAffectedK}K` : `${summary.topValue ?? 0}%`}
+              {source === "dam" ? `${summary.totalAffectedK}K` : `${(summary as any).topCoverage ?? 0}%`}
             </p>
           </Card>
         </div>
@@ -233,7 +233,7 @@ export default function ReportsPage() {
                 </p>
                 {summary.topName && (
                   <p>
-                    The most impactful project by displacement is {summary.topName}, registering {summary.topValue}% displacement.
+                    The most impactful project by displacement is {summary.topName}, registering {(summary as any).topDisplacement}% displacement.
                   </p>
                 )}
                 <p>
@@ -243,7 +243,7 @@ export default function ReportsPage() {
             ) : (
               <>
                 <p>
-                  Across {summary.count} forests, the average coverage stands at {summary.avgCoverage}% with the highest coverage observed at {summary.topValue ?? 0}%.
+                  Across {summary.count} forests, average coverage stands at {summary.avgCoverage}% with % highest coverage observed at {(summary as any).topCoverage ?? 0}%.
                 </p>
                 {summary.topName && (
                   <p>
