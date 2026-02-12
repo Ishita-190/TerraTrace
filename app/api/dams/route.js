@@ -1,11 +1,35 @@
 import { neon } from '@neondatabase/serverless';
 import { NextResponse } from 'next/server';
 
-const sql = neon(process.env.DATABASE_URL);
+// Check if DATABASE_URL is available
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error('[Dams-API] DATABASE_URL not found in environment variables');
+  console.error('[Dams-API] Available env vars:', Object.keys(process.env).filter(key => key.includes('DATABASE') || key.includes('NEON')));
+}
+
+const sql = databaseUrl ? neon(databaseUrl) : null;
 
 export async function GET(request) {
   try {
     console.log('[Dams-API] Request received');
+    
+    // Check if database is available
+    if (!sql) {
+      console.error('[Dams-API] Database connection not available');
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Database connection not available. Please check DATABASE_URL environment variable.',
+          debug: {
+            envVars: Object.keys(process.env).filter(key => key.includes('DATABASE') || key.includes('NEON')),
+            hasDatabaseUrl: !!databaseUrl
+          }
+        },
+        { status: 500 }
+      );
+    }
     
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get('limit');
