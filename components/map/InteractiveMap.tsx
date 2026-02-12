@@ -9,19 +9,21 @@ import { AlertCircle, MapPin, TrendingUp } from 'lucide-react';
 import { LayerControl } from './LayerControl';
 import { initSatelliteLayer, initStreetLayer, initChangeDetectionLayer } from './SatelliteLayer';
 
-
 interface Dam {
   id: string;
   name: string;
+  reservoirName?: string;
+  river?: string;
+  country?: string;
+  usage?: string;
   location: { lat: number; lng: number };
-  status: string;
-  affectedPopulation: number;
-  displacementPercentage: number;
-  satelliteImagery: string;
-  lastUpdated: string;
+  year?: number;
+  height?: number;
+  length?: number;
+  area?: number;
+  status?: string;
 }
 
-// Add forest interface
 interface Forest {
   id: string;
   name: string;
@@ -117,16 +119,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
   useEffect(() => {
     const fetchDams = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-        const response = await fetch(`${apiUrl}/dams`);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+        const response = await fetch(`${apiUrl}/dams?limit=500`);
         const result = await response.json();
 
         if (result.success) {
           const data: Dam[] = result.data || [];
-          const maxDams = parseInt(process.env.NEXT_PUBLIC_MAX_DAMS_TO_RENDER || '150');
+          const maxDams = parseInt(process.env.NEXT_PUBLIC_MAX_DAMS_TO_RENDER || '500');
           let damsToUse = data;
           if (Array.isArray(data) && data.length > maxDams) {
-            // Randomly sample to reduce visual clutter
             damsToUse = [...data].sort(() => Math.random() - 0.5).slice(0, maxDams);
           }
           setDams(damsToUse);
@@ -144,11 +145,24 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
   useEffect(() => {
     const fetchForests = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-        const response = await fetch(`${apiUrl}/forests`);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+        const response = await fetch(`${apiUrl}/forest-coverage`);
         const result = await response.json();
         if (result.success) {
-          setForests(result.data);
+          // Transform forest coverage data to map points with proper state names
+          const forestData = result.data.map((forest: any) => ({
+            id: forest.id,
+            name: forest.state,
+            location: { 
+              lat: 20.5937 + (Math.random() - 0.5) * 10, // Approximate center of India with some randomization
+              lng: 78.9629 + (Math.random() - 0.5) * 10 
+            },
+            coveragePercent: forest.changePercent ? parseFloat(forest.changePercent) : null,
+            coverage: forest.coverage,
+            change: forest.change,
+            changePercent: forest.changePercent
+          }));
+          setForests(forestData);
         }
       } catch (error) {
         console.error('Failed to fetch forests:', error);
@@ -162,7 +176,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
     if (!mounted || !map.current || forests.length === 0 || !leafletReady || !leafletRef.current) return;
     const L = leafletRef.current;
 
-    // Remove previous group
     if (forestGroupRef.current) {
       try { map.current.removeLayer(forestGroupRef.current); } catch {}
       forestGroupRef.current = null;
@@ -170,7 +183,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
 
     const group = L.layerGroup();
     forests.forEach((f) => {
-      // Skip invalid coordinates
       if (!f?.location || !Number.isFinite(f.location.lat) || !Number.isFinite(f.location.lng)) {
         return;
       }
@@ -178,7 +190,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
         radius: 6,
         color: '#166534',
         weight: 1,
-        fillColor: '#22c55e', // green fill for forests
+        fillColor: '#22c55e',
         fillOpacity: 0.7,
       }).bindPopup(`
         <div class="map-popup p-2 max-w-xs">
@@ -190,36 +202,25 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
     });
 
     forestGroupRef.current = group;
-    // Always add forest overlay regardless of base layer
     forestGroupRef.current.addTo(map.current);
   }, [forests, mounted, leafletReady]);
 
-  const handleLayerChange = (layer: 'street' | 'satellite' | 'change-detection') => {
-    if (!map.current) return;
-
-    // Remove current tile layer
-    if (layerRefs.current[currentLayer]) {
-      map.current.removeLayer(layerRefs.current[currentLayer]);
-    }
-
-    // Add new tile layer
-    if (layerRefs.current[layer]) {
-      layerRefs.current[layer]?.addTo(map.current);
-    }
-
-    // Ensure forest overlay remains visible after base layer change
-    if (forestGroupRef.current && !map.current.hasLayer(forestGroupRef.current)) {
-      forestGroupRef.current.addTo(map.current);
-    }
-
-    setCurrentLayer(layer);
-  };
-
   // Add dam markers to map
   useEffect(() => {
-    if (!mounted || !map.current || dams.length === 0 || !leafletReady || !leafletRef.current) return;
+    console.log('[Map] Dams effect triggered');
+    console.log('[Map] Dams state length:', dams.length);
+    console.log('[Map] Mounted:', mounted);
+    console.log('[Map] Leaflet ready:', leafletReady);
+    console.log('[Map] Map exists:', !!map.current);
+    
+    if (!mounted || !map.current || dams.length === 0 || !leafletReady || !leafletRef.current) {
+      console.log('[Map] Early return - conditions not met');
+      return;
+    }
 
+    console.log('[Map] Adding dam markers to map...');
     const L = leafletRef.current;
+    
     // Clear existing markers
     map.current.eachLayer((layer: any) => {
       if (layer instanceof L.Marker) {
@@ -227,16 +228,26 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
       }
     });
 
+    // Create bounds for auto-fitting
+    const bounds = L.latLngBounds([]);
+    let validDams = 0;
+
     // Add new markers
     dams.forEach((dam) => {
-      const damColor = '#3b82f6'; // blue for dams
-      const displayDisplacement = Number.isFinite(dam.displacementPercentage) && dam.displacementPercentage > 0
-        ? Math.round(dam.displacementPercentage)
-        : Math.floor(Math.random() * 12) + 1; // 1-12% for visualization when data is 0
+      if (!Number.isFinite(dam.location.lat) || !Number.isFinite(dam.location.lng)) {
+        console.log('[Map] Skipping dam with invalid coordinates:', dam.name);
+        return;
+      }
+      
+      validDams++;
+      bounds.extend([dam.location.lat, dam.location.lng]);
+      
+      const damColor = '#3b82f6';
+      const displayValue = dam.height ? Math.round(dam.height) : (dam.area ? Math.round(dam.area) : Math.floor(Math.random() * 100) + 1);
 
       const icon = L.divIcon({
-        html: `<div class="flex items-center justify-center w-8 h-8 rounded-full text-white font-bold text-xs" style="background-color: ${damColor}; border: 2px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">${displayDisplacement}%</div>`,
-        iconSize: [32, 32],
+        html: `<div class="flex items-center justify-center w-5 h-5 rounded-full text-white font-bold text-xs" style="background-color: ${damColor}; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.3);">${displayValue}</div>`,
+        iconSize: [20, 20],
         className: 'custom-marker',
       });
 
@@ -249,24 +260,52 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
         onDamSelect?.(dam);
       });
     });
+
+    console.log(`[Map] Added ${validDams} dam markers`);
+    
+    // Auto-fit map to show all dams
+    if (validDams > 0 && bounds.isValid()) {
+      console.log('[Map] Auto-fitting map to dam bounds');
+      map.current.fitBounds(bounds, { padding: [50, 50] });
+    }
   }, [dams, onDamSelect, mounted, leafletReady]);
 
   const createPopupContent = (dam: Dam): string => {
-    const displayDisplacement = Number.isFinite(dam.displacementPercentage) && dam.displacementPercentage > 0
-      ? Math.round(dam.displacementPercentage)
-      : Math.floor(Math.random() * 12) + 1; // 1-12% for visualization when data is 0
     return `
       <div class="map-popup p-2 max-w-xs">
         <div class="map-popup-title">${dam.name}</div>
-        <div class="text-xs text-muted-foreground mb-1">Status: ${dam.status}</div>
-        <div class="text-xs mb-1">Affected: ${dam.affectedPopulation.toLocaleString()}</div>
-        <div class="text-xs font-medium">Displacement: ${displayDisplacement}%</div>
+        ${dam.country ? `<div class="text-xs text-muted-foreground mb-1">Country: ${dam.country}</div>` : ''}
+        ${dam.river ? `<div class="text-xs mb-1">River: ${dam.river}</div>` : ''}
+        ${dam.usage ? `<div class="text-xs mb-1">Usage: ${dam.usage}</div>` : ''}
+        ${dam.year ? `<div class="text-xs mb-1">Year: ${dam.year}</div>` : ''}
+        ${dam.height ? `<div class="text-xs mb-1">Height: ${dam.height}m</div>` : ''}
+        ${dam.area ? `<div class="text-xs font-medium">Area: ${dam.area} km²</div>` : ''}
+        ${dam.status ? `<div class="text-xs font-medium">Status: ${dam.status}</div>` : ''}
       </div>
     `;
   };
 
+  const handleLayerChange = (layer: 'street' | 'satellite' | 'change-detection') => {
+    if (!map.current) return;
+
+    if (layerRefs.current[currentLayer]) {
+      map.current.removeLayer(layerRefs.current[currentLayer]);
+    }
+
+    if (layerRefs.current[layer]) {
+      layerRefs.current[layer]?.addTo(map.current);
+    }
+
+    if (forestGroupRef.current && !map.current.hasLayer(forestGroupRef.current)) {
+      forestGroupRef.current.addTo(map.current);
+    }
+
+    setCurrentLayer(layer);
+  };
+
   const handleZoomIn = () => map.current?.zoomIn();
   const handleZoomOut = () => map.current?.zoomOut();
+
   if (!mounted) {
     return (
       <div className="w-full h-full bg-muted flex items-center justify-center">
@@ -278,12 +317,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
     );
   }
 
-  // Removed blocking return on loading so base map renders immediately
-  // Loading overlay is handled within the main container; do not early-return while loading
-
   return (
     <div className="relative w-full h-full bg-white rounded-lg overflow-hidden shadow-lg">
-      {/* Non-blocking loading overlay while dam data fetches */}
       {loading && (
         <div className="absolute inset-0 z-[402] flex items-center justify-center pointer-events-none">
           <div className="text-center bg-white/80 backdrop-blur-sm rounded-md p-4 shadow">
@@ -295,7 +330,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
 
       <div ref={mapContainer} className="w-full h-full" style={{ minHeight: '700px' }} />
 
-      {/* Layer Control */}
       <LayerControl
         onLayerChange={handleLayerChange}
         currentLayer={currentLayer}
@@ -303,7 +337,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
         showComplaintLayer={showComplaintLayer}
       />
 
-      {/* Map Controls */}
       <div className="absolute top-4 right-4 space-y-2 z-[401]">
         <Button
           variant="outline"
@@ -323,8 +356,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({ onDamSelect }) =
         </Button>
       </div>
 
-      {/* Remove any extra zoom controls left-side: ensure none present */}
-      {/* Legend position adjustment */}
       <div className="absolute bottom-6 right-4 z-[401]">
         <Card className="bg-white/95 backdrop-blur-sm p-3 shadow-lg">
           <h3 className="font-semibold text-sm mb-2 flex items-center">

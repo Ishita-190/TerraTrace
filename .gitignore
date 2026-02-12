@@ -45,3 +45,31 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# 🚨 SENSITIVE PROJECT FILES (ADD THESE):
+# Database dumps and backups
+dump.sql
+*.sql.backup
+*.sql.dump
+
+# Neon database cache
+.neon/
+
+# Local development server
+server/
+server/routes/dams-simple.js
+server/routes/forest-coverage.js
+server/routes/test-dams.js
+server/routes/forests.js.backup
+
+# Backup components
+components/map/InteractiveMap-backup.tsx
+
+# Development scripts (may contain sensitive data)
+scripts/import-datasets*.js
+scripts/debug-*.js
+scripts/test-*.js
+
+# Database schema and import files (may contain credentials)
+database/
+README-DATASETS.md
